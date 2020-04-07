@@ -3,37 +3,20 @@
 import defs
 import spidev
 import time
+# import ctypes
 
 import RPi.GPIO as GPIO
-GPIO.setmode(GPIO.BCM) 
-
-# CS on GPIO22
 
 
-# We only have SPI bus 0 available to us on the Pi
-bus = 0
 
-#Device is the chip select pin. Set to 0 or 1, depending on the connections
-device = 1
+class LoRa:
 
-# Enable SPI
-spi = spidev.SpiDev()
-
-# Open a connection to a specific bus and device (chip select pin)
-spi.open(bus, device)
-
-# Set SPI speed and mode
-spi.max_speed_hz = 200000
-spi.mode = 0
-
-
-class LoRaClass:
-
-    def __init__(self, cs, rst, dio0):
-        self._cs = cs
+    def __init__(self, cs, rst=None, dio0=None):
+        self._cs = 22
         self._rst = rst
         self._dio0 = dio0
-        self._spi = spidev.SpiDev()
+        
+       
    
 
     
@@ -46,39 +29,53 @@ class LoRaClass:
 
     #  frequency is a long, returns an int
     def begin(self, frequency):
+        GPIO.setmode(GPIO.BCM) 
 
+        if self._dio0 is not None:
+            GPIO.setup(self._dio0, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
         
+        if self._rst is not None:
+            GPIO.setup(self._rst, GPIO.OUT)
+            # perform reset
+            GPIO.output(self._rst, GPIO.LOW)
+            time.sleep(0.01) 
+            GPIO.output(self._rst, GPIO.HIGH)
+            time.sleep(0.01) 
 
-        GPIO.setup(self._rst, GPIO.OUT) 
-        GPIO.setup(self._cs, GPIO.OUT) 
-        GPIO.setup(self._dio0, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
-        
-        # perform reset
-        GPIO.output(self._rst, GPIO.LOW)
-        time.sleep(0.01) 
-        GPIO.output(self._rst, GPIO.HIGH)
-        time.sleep(0.01) 
+        self._spi = spidev.SpiDev(0,0)
+        self._spi.max_speed_hz = 976000
+        self._spi.mode = 0
 
         # start SPI
         if self._cs == 0 or self._cs == 1:
-            self._spi.open(0,self._cs)
-
+            try:
+                self._spi.open(0,self._cs)
+            except Exception as e:
+                print(e)
+                self._spi.close() 
+                exit()
         else:
+            pass
             self._spi.no_cs = True
-            GPIO.output(self._cs, GPIO.LOW)   # just set low for now, we'll debug deselecting the chip after each transfer
-            self._spi.open(0,0)
-
+            GPIO.setup(self._cs, GPIO.OUT) 
+            try:
+                self._spi.open(0,0)
+            except Exception as e:
+                print(e)
+                self._spi.close() # this is crucial to catch, otherwise we won't be able to start again next time
+                exit()
        
         # check version
         version = self.__readRegister(defs.REG_VERSION) 
+        print(F"Version: {hex(version)}")
         if (version != 0x12):
             return 0 
 
         # put in sleep mode
-        sleep() 
+        self.sleep() 
 
         # set frequency
-        setFrequency(frequency) 
+        self.setFrequency(frequency) 
 
         # set base addresses
         self.__writeRegister(defs.REG_FIFO_TX_BASE_ADDR, 0) 
@@ -91,33 +88,34 @@ class LoRaClass:
         self.__writeRegister(defs.REG_MODEM_CONFIG_3, 0x04) 
 
         # set output power to 17 dBm
-        setTxPower(17) 
+        self.setTxPower(17, defs.PA_OUTPUT_PA_BOOST_PIN) 
 
         # put in standby mode
-        idle() 
+        self.idle() 
         return 1 
 
-    # returns nothing
+    # Working
     def end(self):
         # put in sleep mode
-        sleep() 
+        self.sleep() 
 
         # stop SPI
         self._spi.close() 
+        GPIO.cleanup()
 
 
     # takes int, returns int
     def beginPacket(self, implicitHeader):
-        if (isTransmitting()):
+        if (self.isTransmitting()):
             return 0 
 
         # put in standby mode
-        idle() 
+        self.idle() 
 
-        if (implicitHeader):
-            implicitHeaderMode() 
+        if (self._implicitHeaderMode == implicitHeader):
+            self.implicitHeaderMode() 
         else: 
-            explicitHeaderMode() 
+            self.explicitHeaderMode() 
 
         # reset FIFO address and paload length
         self.__writeRegister(defs.REG_FIFO_ADDR_PTR, 0) 
@@ -135,22 +133,22 @@ class LoRaClass:
 
         if (not asynch):
         # wait for TX done
-            while ((self.__readRegister(defs.REG_IRQ_FLAGS) & IRQ_TX_DONE_MASK) == 0):
+            while ((self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_TX_DONE_MASK) == 0):
                 yield()     # have to figure this out...
             # clear IRQ's
-            self.__writeRegister(defs.REG_IRQ_FLAGS, IRQ_TX_DONE_MASK) 
+            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_TX_DONE_MASK) 
 
         return 1 
 
     #bool return
     def isTransmitting(self):
         if ((self.__readRegister(defs.REG_OP_MODE) & defs.MODE_TX) == defs.MODE_TX):
-            return true 
+            return True 
 
-        if (self.__readRegister(defs.REG_IRQ_FLAGS) & IRQ_TX_DONE_MASK):
+        if (self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_TX_DONE_MASK):
             # clear IRQ's
-            self.__writeRegister(defs.REG_IRQ_FLAGS, IRQ_TX_DONE_MASK) 
-        return false 
+            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_TX_DONE_MASK) 
+        return False 
 
     #int return, int in
     def parsePacket(self, size):
@@ -158,15 +156,15 @@ class LoRaClass:
         irqFlags = self.__readRegister(defs.REG_IRQ_FLAGS) 
 
         if (size > 0):
-            implicitHeaderMode() 
+            self.implicitHeaderMode() 
             self.__writeRegister(defs.REG_PAYLOAD_LENGTH, size & 0xff) 
         else:
-            explicitHeaderMode() 
+            self.explicitHeaderMode() 
 
         # clear IRQ's
         self.__writeRegister(defs.REG_IRQ_FLAGS, irqFlags) 
 
-        if ((irqFlags & IRQ_RX_DONE_MASK) and (irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) == 0 ):
+        if ((irqFlags & defs.IRQ_RX_DONE_MASK) and (irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) == 0 ):
             # received a packet
             self._packetIndex = 0 
 
@@ -180,8 +178,8 @@ class LoRaClass:
             self.__writeRegister(defs.REG_FIFO_ADDR_PTR, self.__readRegister(defs.REG_FIFO_RX_CURRENT_ADDR)) 
 
             # put in standby mode
-            idle() 
-        elif (self.__readRegister(defs.REG_OP_MODE) != (MODE_LONG_RANGE_MODE | defs.MODE_RX_SINGLE) ):
+            self.idle() 
+        elif (self.__readRegister(defs.REG_OP_MODE) != (defs.MODE_LONG_RANGE_MODE | defs.MODE_RX_SINGLE) ):
             # not currently in RX mode
             # reset FIFO address
             self.__writeRegister(defs.REG_FIFO_ADDR_PTR, 0) 
@@ -210,9 +208,9 @@ class LoRaClass:
             freqError -= 524288 # B1000'0000'0000'0000'0000
 
         fXtal = 32E6 # FXOSC: crystal oscillator (XTAL) frequency (2.5. Chip Specification, p. 14)
-        fError = (((freqError) * (1 << 24)) / fXtal) * (getSignalBandwidth() / 500000.0) # p. 37
+        fError = (((freqError) * (1 << 24)) / fXtal) * (self.getSignalBandwidth() / 500000.0) # p. 37
 
-        return static_cast<long>(fError) 
+        return (fError) 
 
     #size_t return, uint8 in
     def write(self, byte):
@@ -220,14 +218,16 @@ class LoRaClass:
 
     #TODO: This should be changed to use bytearray with automatic size calculation
     #size_t return, buffer pointer and int size in
-    def write(self, buffer, size):
+    def write(self, buffer):
+        pkt = bytearray(buffer, 'utf-8')
+        size = len(pkt)
         currentLength = self.__readRegister(defs.REG_PAYLOAD_LENGTH) 
         # check size
         if ((currentLength + size) > defs.MAX_PKT_LENGTH ):
             size = defs.MAX_PKT_LENGTH - currentLength 
         # write data
         for i in range(0,size):
-            self.__writeRegister(defs.REG_FIFO, buffer[i]) 
+            self.__writeRegister(defs.REG_FIFO, pkt[i]) 
         # update length
         self.__writeRegister(defs.REG_PAYLOAD_LENGTH, currentLength + size) 
 
@@ -239,14 +239,14 @@ class LoRaClass:
 
     #int 
     def read(self):
-        if (not available()):
+        if (not self.available()):
             return -1 
         self._packetIndex = self._packetIndex + 1 
         return self.__readRegister(defs.REG_FIFO) 
 
     #int 
     def peek():
-        if (not available()):
+        if (not self.available()):
             return -1 
         # store current FIFO address
         currentAddress = self.__readRegister(defs.REG_FIFO_ADDR_PTR) 
@@ -255,10 +255,6 @@ class LoRaClass:
         # restore FIFO address
         self.__writeRegister(defs.REG_FIFO_ADDR_PTR, currentAddress) 
         return b 
-
-    # void def flush()
-    # {
-    # }
 
     #TODO: Figure out how to handle callbacks
 
@@ -310,6 +306,14 @@ class LoRaClass:
 
         self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_RX_CONTINUOUS) 
 
+    # send a packet over the wire
+    def transmit(self, packet):
+        if self.beginPacket(self._implicitHeaderMode):
+            self.write(packet)
+            self.endPacket(False)
+            return True
+        return False
+
     # returns void 
     def idle(self):
         self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_STDBY) 
@@ -320,7 +324,7 @@ class LoRaClass:
 
     # returns void, takes two ints
     def setTxPower(self, level, outputPin):
-        if (PA_OUTPUT_RFO_PIN == outputPin):
+        if (defs.PA_OUTPUT_RFO_PIN == outputPin):
         # RFO
             if (level < 0):
                 level = 0 
@@ -339,25 +343,25 @@ class LoRaClass:
 
                 # High Power +20 dBm Operation (Semtech SX1276/77/78/79 5.4.3.)
                 self.__writeRegister(defs.REG_PA_DAC, 0x87) 
-                setOCP(140) 
+                self.setOCP(140) 
             else:
                 if (level < 2):
                     level = 2 
                 #$Default value PA_HF/LF or +17dBm
                 self.__writeRegister(defs.REG_PA_DAC, 0x84) 
-                setOCP(100) 
+                self.setOCP(100) 
 
-            self.__writeRegister(defs.REG_PA_CONFIG, PA_BOOST | (level - 2)) 
+            self.__writeRegister(defs.REG_PA_CONFIG, defs.PA_BOOST | (level - 2)) 
 
     # returns void, takes a long
     def setFrequency(self, frequency):
+        frequency = int(frequency)
         _frequency = frequency 
+        frf = int((frequency << 19) / 32000000)
 
-        frf = (frequency << 19) / 32000000 
-
-        self.__writeRegister(defs.REG_FRF_MSB, (uint8_t)(frf >> 16)) 
-        self.__writeRegister(defs.REG_FRF_MID, (uint8_t)(frf >> 8)) 
-        self.__writeRegister(defs.REG_FRF_LSB, (uint8_t)(frf >> 0)) 
+        self.__writeRegister(defs.REG_FRF_MSB, (frf >> 16)) 
+        self.__writeRegister(defs.REG_FRF_MID, (frf >> 8)) 
+        self.__writeRegister(defs.REG_FRF_LSB, (frf >> 0)) 
 
     #int 
     def getSpreadingFactor(self):
@@ -378,7 +382,7 @@ class LoRaClass:
             self.__writeRegister(defs.REG_DETECTION_THRESHOLD, 0x0a) 
 
         self.__writeRegister(defs.REG_MODEM_CONFIG_2, (self.__readRegister(defs.REG_MODEM_CONFIG_2) & 0x0f) | ((sf << 4) & 0xf0)) 
-        setLdoFlag() 
+        self.setLdoFlag() 
 
     #long 
     def getSignalBandwidth(self):
@@ -412,12 +416,12 @@ class LoRaClass:
             bw = 9 
 
         self.__writeRegister(defs.REG_MODEM_CONFIG_1, (self.__readRegister(defs.REG_MODEM_CONFIG_1) & 0x0f) | (bw << 4)) 
-        setLdoFlag() 
+        self.setLdoFlag() 
 
     # returns void 
     def setLdoFlag(self):
         # Section 4.1.1.5
-        symbolDuration = 1000 / ( getSignalBandwidth() / (1 << getSpreadingFactor()) )  
+        symbolDuration = 1000 / ( self.getSignalBandwidth() / (1 << self.getSpreadingFactor()) )  
 
         # Section 4.1.1.6
         ldoOn = symbolDuration > 16 
@@ -465,42 +469,27 @@ class LoRaClass:
         self.__writeRegister(defs.REG_INVERTIQ2, 0x1d) 
 
     # returns void, takes uint8 
-    def setOCP(self, mA):
-        ocpTrim = 27 
+    def setOCP(self, mA:int):
+        ocpTrim: int = 27 
 
         if (mA <= 120):
-            ocpTrim = (mA - 45) / 5 
+            ocpTrim = int((mA - 45) / 5) 
         elif (mA <=240):
-            ocpTrim = (mA + 30) / 10 
+            ocpTrim = int((mA + 30) / 10) 
 
         self.__writeRegister(defs.REG_OCP, 0x20 | (0x1F & ocpTrim)) 
 
     def random(self):
         return self.__readRegister(defs.REG_RSSI_WIDEBAND) 
 
-    # returns void, takes ints 
-    def setPins(self, ss, reset, dio0):
-        _ss = ss 
-        _reset = reset 
-        _dio0 = dio0 
-
-    # returns void 
-    # def setSPI(SPIClass& spi)
-    # {
-    # _spi = &spi 
-    # }
-
     # returns void 
     def setSPIFrequency(self, frequency):
-        _spiSettings = SPISettings(frequency, MSBFIRST, SPI_MODE0) 
+        self._spi.max_speed_hz = frequency
 
-    # returns void 
+    # Working
     def dumpRegisters(self):
         for i in range(0,128):
-            print("0x") 
-            print(hex(i)) 
-            print(": 0x") 
-            println(hex(self.__readRegister(i)) ) 
+            print(F"0x{hex(i)}: 0x{hex(self.__readRegister(i))}") 
 
     # returns void 
     def explicitHeaderMode(self):
@@ -519,9 +508,9 @@ class LoRaClass:
         # clear IRQ's
         self.__writeRegister(defs.REG_IRQ_FLAGS, irqFlags) 
 
-        if ((irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) == 0):
+        if ((irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) == 0):
 
-            if ((irqFlags & IRQ_RX_DONE_MASK) != 0):
+            if ((irqFlags & defs.IRQ_RX_DONE_MASK) != 0):
                 # received a packet
                 self._packetIndex = 0 
 
@@ -534,7 +523,7 @@ class LoRaClass:
                 if (self._onReceive):
                     self._onReceive(packetLength) 
 
-            elif ((irqFlags & IRQ_TX_DONE_MASK) != 0):
+            elif ((irqFlags & defs.IRQ_TX_DONE_MASK) != 0):
                 if (self._onTxDone):
                    self._onTxDone() 
 
@@ -546,18 +535,20 @@ class LoRaClass:
     def __writeRegister(self, address, value):
         self.__singleTransfer(address | 0x80, value) 
 
-    # takes and returns bytes
-    def __singleTransfer(self, address, value):
-        response 
+    # Working
+    def __singleTransfer(self, address:int, value:int):
+        response = 00
 
-        # digitalWrite(_ss, LOW) 
+        if self._cs > 1:
+            GPIO.output(self._cs, GPIO.LOW)
 
-        self._spi.xfer2(address) 
-        response = self._spi.xfer2(value) 
+        self._spi.xfer2([address]) 
+        response = self._spi.xfer2([value]) 
 
-        # digitalWrite(_ss, HIGH) 
+        if self._cs > 1:
+            GPIO.output(self._cs, GPIO.HIGH)
 
-        return response 
+        return response[0] 
 
     # ISR_PREFIX # returns void 
     # def onDio0Rise()
@@ -568,12 +559,17 @@ class LoRaClass:
 
 
 
+# dio0 and rst should be pins 17 and 21
+# RF95 CS=GPIO22, IRQ=GPIO255, RST=GPIO27, LED=GPIO255 OK NodeID=1 @ 915.00MHz
+
+# import wiringpi
 
 if __name__ == "__main__":
-    radio = LoRaClass(22,3,1)
+    radio = LoRa(22,27)
     radio.begin(915E6)
 
+    # radio.dumpRegisters()
 
+    print( radio.transmit("Testing..")  )
 
-
-    GPIO.cleanup()
+    radio.end()

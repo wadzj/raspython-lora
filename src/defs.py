@@ -1,52 +1,56 @@
-REG_FIFO                = b'\x00'
-REG_OP_MODE             = b'\x01'
-REG_FRF_MSB             = b'\x06'
-REG_FRF_MID             = b'\x07'
-REG_FRF_LSB             = b'\x08'
-REG_PA_CONFIG           = b'\x09'
-REG_OCP                 = b'\x0b'
-REG_LNA                 = b'\x0c'
-REG_FIFO_ADDR_PTR       = b'\x0d'
-REG_FIFO_TX_BASE_ADDR   = b'\x0e'
-REG_FIFO_RX_BASE_ADDR   = b'\x0f'
-REG_FIFO_RX_CURRENT_ADDR= b'\x10'
-REG_IRQ_FLAGS           = b'\x12'
-REG_RX_NB_BYTES         = b'\x13'
-REG_PKT_SNR_VALUE       = b'\x19'
-REG_PKT_RSSI_VALUE      = b'\x1a'
-REG_MODEM_CONFIG_1      = b'\x1d'
-REG_MODEM_CONFIG_2      = b'\x1e'
-REG_PREAMBLE_MSB        = b'\x20'
-REG_PREAMBLE_LSB        = b'\x21'
-REG_PAYLOAD_LENGTH      = b'\x22'
-REG_MODEM_CONFIG_3      = b'\x26'
-REG_FREQ_ERROR_MSB      = b'\x28'
-REG_FREQ_ERROR_MID      = b'\x29'
-REG_FREQ_ERROR_LSB      = b'\x2a'
-REG_RSSI_WIDEBAND       = b'\x2c'
-REG_DETECTION_OPTIMIZE  = b'\x31'
-REG_INVERTIQ            = b'\x33'
-REG_DETECTION_THRESHOLD = b'\x37'
-REG_SYNC_WORD           = b'\x39'
-REG_INVERTIQ2           = b'\x3b'
-REG_DIO_MAPPING_1       = b'\x40'
-REG_VERSION             = b'\x42'
-REG_PA_DAC              = b'\x4d'
+REG_FIFO                = 0x00
+REG_OP_MODE             = 0x01
+REG_FRF_MSB             = 0x06
+REG_FRF_MID             = 0x07
+REG_FRF_LSB             = 0x08
+REG_PA_CONFIG           = 0x09
+REG_OCP                 = 0x0b
+REG_LNA                 = 0x0c
+REG_FIFO_ADDR_PTR       = 0x0d
+REG_FIFO_TX_BASE_ADDR   = 0x0e
+REG_FIFO_RX_BASE_ADDR   = 0x0f
+REG_FIFO_RX_CURRENT_ADDR= 0x10
+REG_IRQ_FLAGS           = 0x12
+REG_RX_NB_BYTES         = 0x13
+REG_PKT_SNR_VALUE       = 0x19
+REG_PKT_RSSI_VALUE      = 0x1a
+REG_MODEM_CONFIG_1      = 0x1d
+REG_MODEM_CONFIG_2      = 0x1e
+REG_PREAMBLE_MSB        = 0x20
+REG_PREAMBLE_LSB        = 0x21
+REG_PAYLOAD_LENGTH      = 0x22
+REG_MODEM_CONFIG_3      = 0x26
+REG_FREQ_ERROR_MSB      = 0x28
+REG_FREQ_ERROR_MID      = 0x29
+REG_FREQ_ERROR_LSB      = 0x2a
+REG_RSSI_WIDEBAND       = 0x2c
+REG_DETECTION_OPTIMIZE  = 0x31
+REG_INVERTIQ            = 0x33
+REG_DETECTION_THRESHOLD = 0x37
+REG_SYNC_WORD           = 0x39
+REG_INVERTIQ2           = 0x3b
+REG_DIO_MAPPING_1       = 0x40
+REG_VERSION             = 0x42
+REG_PA_DAC              = 0x4d
 
 # modes
-MODE_LONG_RANGE_MODE    = b'\x80'
-MODE_SLEEP              = b'\x00'
-MODE_STDBY              = b'\x01'
-MODE_TX                 = b'\x03'
-MODE_RX_CONTINUOUS      = b'\x05'
-MODE_RX_SINGLE          = b'\x06'
+MODE_LONG_RANGE_MODE    = 0x80
+MODE_SLEEP              = 0x00
+MODE_STDBY              = 0x01
+MODE_TX                 = 0x03
+MODE_RX_CONTINUOUS      = 0x05
+MODE_RX_SINGLE          = 0x06
 
 # PA config
-PA_BOOST                = b'\x80'
+PA_BOOST                = 0x80
+PA_OUTPUT_RFO_PIN       = 0
+PA_OUTPUT_PA_BOOST_PIN  = 1
 
 # IRQ masks
-IRQ_TX_DONE_MASK          = b'\x08'
-IRQ_PAYLOAD_CRC_ERROR_MASK= b'\x20'
-IRQ_RX_DONE_MASK          = b'\x40'
+IRQ_TX_DONE_MASK          = 0x08
+IRQ_PAYLOAD_CRC_ERROR_MASK= 0x20
+IRQ_RX_DONE_MASK          = 0x40
 
-MAX_PKT_LENGTH            = 255
+MAX_PKT_LENGTH          =   255
+
+
