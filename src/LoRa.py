@@ -7,6 +7,8 @@ import time
 
 import RPi.GPIO as GPIO
 
+import pdb
+
 
 
 class LoRa:
@@ -31,9 +33,7 @@ class LoRa:
     def begin(self, frequency):
         GPIO.setmode(GPIO.BCM) 
 
-        if self._dio0 is not None:
-            GPIO.setup(self._dio0, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
-        
+       
         if self._rst is not None:
             GPIO.setup(self._rst, GPIO.OUT)
             # perform reset
@@ -64,10 +64,15 @@ class LoRa:
                 print(e)
                 self._spi.close() # this is crucial to catch, otherwise we won't be able to start again next time
                 exit()
+
+        # The callback will run as soon as it is set up
+        if self._dio0 is not None:
+            GPIO.setup(self._dio0, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+          
+    
        
         # check version
         version = self.__readRegister(defs.REG_VERSION) 
-        print(F"Version: {hex(version)}")
         if (version != 0x12):
             return 0 
 
@@ -104,15 +109,49 @@ class LoRa:
         GPIO.cleanup()
 
 
+    def detectCad(self, timeout:int = 1000):
+        # clear IRQ's
+        self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_CAD_DONE_MASK | defs.IRQ_CAD_DETECTED_MASK);
+
+        # set mode to CAD
+        modeState = self._readRegister(defs.REG_OP_MODE);
+        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_STDBY);
+
+        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_CAD);
+
+        # stall till timeout
+        timeout_count = 0;
+        while not (self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_CAD_DONE_MASK ) and (timeout_count < timeout):
+            time.sleep(0.01)
+            timeout_count += 1
+
+        # restore the mode here??
+        self.__writeRegister(defs.REG_OP_MODE, modeState);
+
+        if(self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_CAD_DETECTED_MASK):
+            # clear the interrupt
+            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_CAD_DONE_MASK | defs.IRQ_CAD_DETECTED_MASK);
+            # put in rx mode
+            self.__writeRegister(defs.REG_OP_MODE, defs.MODE_RX_CONTINUOUS);
+            return 1
+        # we timed out without finishing cad, go ahead and send anyway?
+        elif (timeout_count == timeout):
+            return 0
+
+        # no cad detected, free to send
+        return 0
+
+
+
     # takes int, returns int
-    def beginPacket(self, implicitHeader):
+    def beginPacket(self):
         if (self.isTransmitting()):
             return 0 
 
         # put in standby mode
         self.idle() 
 
-        if (self._implicitHeaderMode == implicitHeader):
+        if (self._implicitHeaderMode == 1):
             self.implicitHeaderMode() 
         else: 
             self.explicitHeaderMode() 
@@ -151,8 +190,9 @@ class LoRa:
         return False 
 
     #int return, int in
-    def parsePacket(self, size):
+    def parsePacket(self, size:int = 0):
         packetLength = 0 
+        # self._packetIndex = 0
         irqFlags = self.__readRegister(defs.REG_IRQ_FLAGS) 
 
         if (size > 0):
@@ -161,10 +201,11 @@ class LoRa:
         else:
             self.explicitHeaderMode() 
 
+
         # clear IRQ's
         self.__writeRegister(defs.REG_IRQ_FLAGS, irqFlags) 
 
-        if ((irqFlags & defs.IRQ_RX_DONE_MASK) and (irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) == 0 ):
+        if ((irqFlags & defs.IRQ_RX_DONE_MASK) and not (irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) ):
             # received a packet
             self._packetIndex = 0 
 
@@ -258,46 +299,31 @@ class LoRa:
 
     #TODO: Figure out how to handle callbacks
 
-    # void def onReceive(void(*callback)(int))
-    # {
-    # _onReceive = callback 
+    def onReceive(self, callback = None):
+        self._onReceive = callback 
 
-    # if (callback) {
-    #     pinMode(_dio0, INPUT) 
-    # #ifdef SPI_HAS_NOTUSINGINTERRUPT
-    #     SPI.usingInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #endif
-    #     attachInterrupt(digitalPinToInterrupt(_dio0), def onDio0Rise, RISING) 
-    # } else {
-    #     detachInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #ifdef SPI_HAS_NOTUSINGINTERRUPT
-    #     SPI.notUsingInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #endif
-    # }
-    # }
+        if not self._dio0 or self._onTxDone:
+            return
 
-    # void def onTxDone(void(*callback)())
-    # {
-    # _onTxDone = callback 
+        if callback:
+            self.__writeRegister(defs.REG_DIO_MAPPING_1, 0x00) # DIO0 => RXDONE
+            GPIO.add_event_detect(self._dio0, GPIO.RISING, callback=self.handleDio0Rise, bouncetime=50)  
+        else:
+            GPIO.remove_event_detect(self._dio0)
 
-    # if (callback) {
-    #     pinMode(_dio0, INPUT) 
-    # #ifdef SPI_HAS_NOTUSINGINTERRUPT
-    #     SPI.usingInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #endif
-    #     attachInterrupt(digitalPinToInterrupt(_dio0), def onDio0Rise, RISING) 
-    # } else {
-    #     detachInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #ifdef SPI_HAS_NOTUSINGINTERRUPT
-    #     SPI.notUsingInterrupt(digitalPinToInterrupt(_dio0)) 
-    # #endif
-    # }
-    # }
+    def onTxDone(self, callback = None):
+        self._onTxDone = callback 
+
+        if not self._dio0 or self._onReceive:
+            return
+
+        if callback:
+            GPIO.add_event_detect(self._dio0, GPIO.RISING, callback=self.handleDio0Rise, bouncetime=50)  
+        else: 
+            GPIO.remove_event_detect(self._dio0)
 
     # takes int, returns nothing
-    def receive(self, size):
-        self.__writeRegister(defs.REG_DIO_MAPPING_1, 0x00) # DIO0 => RXDONE
-
+    def receive(self, size: int = 0):
         if (size > 0):
             self.implicitHeaderMode() 
             self.__writeRegister(defs.REG_PAYLOAD_LENGTH, size & 0xff) 
@@ -308,7 +334,7 @@ class LoRa:
 
     # send a packet over the wire
     def transmit(self, packet):
-        if self.beginPacket(self._implicitHeaderMode):
+        if self.beginPacket():
             self.write(packet)
             self.endPacket(False)
             return True
@@ -419,6 +445,15 @@ class LoRa:
         self.setLdoFlag() 
 
     # returns void 
+
+    #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
+    #define bitSet(value, bit) ((value) |= (1UL << (bit)))
+    #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
+    def bitWrite(self, value, bit, bitvalue):
+        return ((1 << bit) | value) if bitvalue == 1 else ( ~(1 << bit) & value)
+
+
+
     def setLdoFlag(self):
         # Section 4.1.1.5
         symbolDuration = 1000 / ( self.getSignalBandwidth() / (1 << self.getSpreadingFactor()) )  
@@ -427,7 +462,7 @@ class LoRa:
         ldoOn = symbolDuration > 16 
 
         config3 = self.__readRegister(defs.REG_MODEM_CONFIG_3) 
-        bitWrite(config3, 3, ldoOn) 
+        self.bitWrite(config3, 3, ldoOn) 
         self.__writeRegister(defs.REG_MODEM_CONFIG_3, config3) 
 
     # returns void, takes int
@@ -443,8 +478,8 @@ class LoRa:
 
     # returns void, takes long
     def setPreambleLength(self, length):
-        self.__writeRegister(defs.REG_PREAMBLE_MSB, (uint8_t)(length >> 8)) 
-        self.__writeRegister(defs.REG_PREAMBLE_LSB, (uint8_t)(length >> 0)) 
+        self.__writeRegister(defs.REG_PREAMBLE_MSB, (length >> 8)) 
+        self.__writeRegister(defs.REG_PREAMBLE_LSB, (length >> 0)) 
 
     # returns void, takes int 
     def setSyncWord(self, sw):
@@ -502,7 +537,7 @@ class LoRa:
         self.__writeRegister(defs.REG_MODEM_CONFIG_1, self.__readRegister(defs.REG_MODEM_CONFIG_1) | 0x01) 
 
     # returns void 
-    def handleDio0Rise(self):
+    def handleDio0Rise(self, channel):
         irqFlags = self.__readRegister(defs.REG_IRQ_FLAGS) 
 
         # clear IRQ's
@@ -550,26 +585,44 @@ class LoRa:
 
         return response[0] 
 
-    # ISR_PREFIX # returns void 
-    # def onDio0Rise()
-    # {
-    # LoRa.handleDio0Rise() 
-    # }
 
-
-
-
-# dio0 and rst should be pins 17 and 21
-# RF95 CS=GPIO22, IRQ=GPIO255, RST=GPIO27, LED=GPIO255 OK NodeID=1 @ 915.00MHz
-
-# import wiringpi
 
 if __name__ == "__main__":
-    radio = LoRa(22,27)
+
+    def onReceive(size):
+        print("Receiving message")
+        print("Rssi: " + str(radio.packetRssi()) )
+        print("SNR: " + str(radio.packetSnr()))
+        msg = ""
+        array = bytearray()
+        for i in range(0,size):
+            temp = radio.read()
+            array.append(temp)
+            msg += chr(temp)
+       	print(array)
+
+        radio.beginPacket()
+        radio.write(msg)
+        radio.endPacket(False)
+        radio.receive()
+
+    def txDone():
+        print("Packet Transmitted")
+
+    radio = LoRa(22,27, 17)
     radio.begin(915E6)
+    radio.onTxDone(txDone)
+    radio.onReceive(onReceive)
+    radio.receive()
+    try:
+        while True:
+            time.sleep(1)
 
-    # radio.dumpRegisters()
+    except KeyboardInterrupt as e:
+        pass
+    finally:
+        radio.end()
 
-    print( radio.transmit("Testing..")  )
 
-    radio.end()
+
+

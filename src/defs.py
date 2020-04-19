@@ -40,6 +40,7 @@ MODE_STDBY              = 0x01
 MODE_TX                 = 0x03
 MODE_RX_CONTINUOUS      = 0x05
 MODE_RX_SINGLE          = 0x06
+MODE_CAD				= 0x07
 
 # PA config
 PA_BOOST                = 0x80
@@ -50,6 +51,9 @@ PA_OUTPUT_PA_BOOST_PIN  = 1
 IRQ_TX_DONE_MASK          = 0x08
 IRQ_PAYLOAD_CRC_ERROR_MASK= 0x20
 IRQ_RX_DONE_MASK          = 0x40
+IRQ_RX_DONE_MASK          = 0x40
+IRQ_CAD_DONE_MASK		  = 0x04
+IRQ_CAD_DETECTED_MASK	  = 0x01
 
 MAX_PKT_LENGTH          =   255
 
