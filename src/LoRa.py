@@ -1,6 +1,6 @@
 # python 3.7
 
-import defs
+from defs import *
 import spidev
 import time
 # import ctypes
@@ -72,7 +72,7 @@ class LoRa:
     
        
         # check version
-        version = self.__readRegister(defs.REG_VERSION) 
+        version = self.__readRegister(REG_VERSION) 
         if (version != 0x12):
             return 0 
 
@@ -83,17 +83,17 @@ class LoRa:
         self.setFrequency(frequency) 
 
         # set base addresses
-        self.__writeRegister(defs.REG_FIFO_TX_BASE_ADDR, 0) 
-        self.__writeRegister(defs.REG_FIFO_RX_BASE_ADDR, 0) 
+        self.__writeRegister(REG_FIFO_TX_BASE_ADDR, 0) 
+        self.__writeRegister(REG_FIFO_RX_BASE_ADDR, 0) 
 
         # set LNA boost
-        self.__writeRegister(defs.REG_LNA, self.__readRegister(defs.REG_LNA) | 0x03) 
+        self.__writeRegister(REG_LNA, self.__readRegister(REG_LNA) | 0x03) 
 
         # set auto AGC
-        self.__writeRegister(defs.REG_MODEM_CONFIG_3, 0x04) 
+        self.__writeRegister(REG_MODEM_CONFIG_3, 0x04) 
 
         # set output power to 17 dBm
-        self.setTxPower(17, defs.PA_OUTPUT_PA_BOOST_PIN) 
+        self.setTxPower(17, PA_OUTPUT_PA_BOOST_PIN) 
 
         # put in standby mode
         self.idle() 
@@ -111,28 +111,28 @@ class LoRa:
 
     def detectCad(self, timeout:int = 1000):
         # clear IRQ's
-        self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_CAD_DONE_MASK | defs.IRQ_CAD_DETECTED_MASK);
+        self.__writeRegister(REG_IRQ_FLAGS, IRQ_CAD_DONE_MASK | IRQ_CAD_DETECTED_MASK);
 
         # set mode to CAD
-        modeState = self._readRegister(defs.REG_OP_MODE);
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_STDBY);
+        modeState = self._readRegister(REG_OP_MODE);
+        self.__writeRegister(REG_OP_MODE, MODE_STDBY);
 
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_CAD);
+        self.__writeRegister(REG_OP_MODE, MODE_CAD);
 
         # stall till timeout
         timeout_count = 0;
-        while not (self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_CAD_DONE_MASK ) and (timeout_count < timeout):
+        while not (self.__readRegister(REG_IRQ_FLAGS) & IRQ_CAD_DONE_MASK ) and (timeout_count < timeout):
             time.sleep(0.01)
             timeout_count += 1
 
         # restore the mode here??
-        self.__writeRegister(defs.REG_OP_MODE, modeState);
+        self.__writeRegister(REG_OP_MODE, modeState);
 
-        if(self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_CAD_DETECTED_MASK):
+        if(self.__readRegister(REG_IRQ_FLAGS) & IRQ_CAD_DETECTED_MASK):
             # clear the interrupt
-            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_CAD_DONE_MASK | defs.IRQ_CAD_DETECTED_MASK);
+            self.__writeRegister(REG_IRQ_FLAGS, IRQ_CAD_DONE_MASK | IRQ_CAD_DETECTED_MASK);
             # put in rx mode
-            self.__writeRegister(defs.REG_OP_MODE, defs.MODE_RX_CONTINUOUS);
+            self.__writeRegister(REG_OP_MODE, MODE_RX_CONTINUOUS);
             return 1
         # we timed out without finishing cad, go ahead and send anyway?
         elif (timeout_count == timeout):
@@ -157,95 +157,95 @@ class LoRa:
             self.explicitHeaderMode() 
 
         # reset FIFO address and paload length
-        self.__writeRegister(defs.REG_FIFO_ADDR_PTR, 0) 
-        self.__writeRegister(defs.REG_PAYLOAD_LENGTH, 0) 
+        self.__writeRegister(REG_FIFO_ADDR_PTR, 0) 
+        self.__writeRegister(REG_PAYLOAD_LENGTH, 0) 
 
         return 1 
 
     #int return, bool in
     def endPacket(self,asynch):
         if ((asynch) and (self._onTxDone)):
-            self.__writeRegister(defs.REG_DIO_MAPPING_1, 0x40) # DIO0 => TXDONE
+            self.__writeRegister(REG_DIO_MAPPING_1, 0x40) # DIO0 => TXDONE
 
         # put in TX mode
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_TX) 
+        self.__writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_TX) 
 
         if (not asynch):
         # wait for TX done
-            while ((self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_TX_DONE_MASK) == 0):
-                yield()     # have to figure this out...
+            while ((self.__readRegister(REG_IRQ_FLAGS) & IRQ_TX_DONE_MASK) == 0):
+                pass     # have to figure this out...
             # clear IRQ's
-            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_TX_DONE_MASK) 
+            self.__writeRegister(REG_IRQ_FLAGS, IRQ_TX_DONE_MASK) 
 
         return 1 
 
     #bool return
     def isTransmitting(self):
-        if ((self.__readRegister(defs.REG_OP_MODE) & defs.MODE_TX) == defs.MODE_TX):
+        if ((self.__readRegister(REG_OP_MODE) & MODE_TX) == MODE_TX):
             return True 
 
-        if (self.__readRegister(defs.REG_IRQ_FLAGS) & defs.IRQ_TX_DONE_MASK):
+        if (self.__readRegister(REG_IRQ_FLAGS) & IRQ_TX_DONE_MASK):
             # clear IRQ's
-            self.__writeRegister(defs.REG_IRQ_FLAGS, defs.IRQ_TX_DONE_MASK) 
+            self.__writeRegister(REG_IRQ_FLAGS, IRQ_TX_DONE_MASK) 
         return False 
 
     #int return, int in
     def parsePacket(self, size:int = 0):
         packetLength = 0 
         # self._packetIndex = 0
-        irqFlags = self.__readRegister(defs.REG_IRQ_FLAGS) 
+        irqFlags = self.__readRegister(REG_IRQ_FLAGS) 
 
         if (size > 0):
             self.implicitHeaderMode() 
-            self.__writeRegister(defs.REG_PAYLOAD_LENGTH, size & 0xff) 
+            self.__writeRegister(REG_PAYLOAD_LENGTH, size & 0xff) 
         else:
             self.explicitHeaderMode() 
 
 
         # clear IRQ's
-        self.__writeRegister(defs.REG_IRQ_FLAGS, irqFlags) 
+        self.__writeRegister(REG_IRQ_FLAGS, irqFlags) 
 
-        if ((irqFlags & defs.IRQ_RX_DONE_MASK) and not (irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) ):
+        if ((irqFlags & IRQ_RX_DONE_MASK) and not (irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) ):
             # received a packet
             self._packetIndex = 0 
 
             # read packet length
             if self._implicitHeaderMode:
-                packetLength = self.__readRegister(defs.REG_PAYLOAD_LENGTH) 
+                packetLength = self.__readRegister(REG_PAYLOAD_LENGTH) 
             else:
-                packetLength = self.__readRegister(defs.REG_RX_NB_BYTES) 
+                packetLength = self.__readRegister(REG_RX_NB_BYTES) 
 
             # set FIFO address to current RX address
-            self.__writeRegister(defs.REG_FIFO_ADDR_PTR, self.__readRegister(defs.REG_FIFO_RX_CURRENT_ADDR)) 
+            self.__writeRegister(REG_FIFO_ADDR_PTR, self.__readRegister(REG_FIFO_RX_CURRENT_ADDR)) 
 
             # put in standby mode
             self.idle() 
-        elif (self.__readRegister(defs.REG_OP_MODE) != (defs.MODE_LONG_RANGE_MODE | defs.MODE_RX_SINGLE) ):
+        elif (self.__readRegister(REG_OP_MODE) != (MODE_LONG_RANGE_MODE | MODE_RX_SINGLE) ):
             # not currently in RX mode
             # reset FIFO address
-            self.__writeRegister(defs.REG_FIFO_ADDR_PTR, 0) 
+            self.__writeRegister(REG_FIFO_ADDR_PTR, 0) 
             # put in single RX mode
-            self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_RX_SINGLE) 
+            self.__writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_SINGLE) 
         return packetLength 
 
     #int return
     def packetRssi(self):
-        return (self.__readRegister(defs.REG_PKT_RSSI_VALUE) - (164 if self._frequency < 868E6 else 157)) 
+        return (self.__readRegister(REG_PKT_RSSI_VALUE) - (164 if self._frequency < 868E6 else 157)) 
 
     #float return 
     def packetSnr(self):
-        return (self.__readRegister(defs.REG_PKT_SNR_VALUE)) * 0.25 
+        return (self.__readRegister(REG_PKT_SNR_VALUE)) * 0.25 
 
     #long 
     def packetFrequencyError(self):
         freqError = 0 
-        freqError = (self.__readRegister(defs.REG_FREQ_ERROR_MSB) & B111) 
+        freqError = (self.__readRegister(REG_FREQ_ERROR_MSB) & B111) 
         freqError <<= 8 
-        freqError += (self.__readRegister(defs.REG_FREQ_ERROR_MID)) 
+        freqError += (self.__readRegister(REG_FREQ_ERROR_MID)) 
         freqError <<= 8 
-        freqError += (self.__readRegister(defs.REG_FREQ_ERROR_LSB)) 
+        freqError += (self.__readRegister(REG_FREQ_ERROR_LSB)) 
 
-        if (self.__readRegister(defs.REG_FREQ_ERROR_MSB) & B1000 ):# Sign bit is on
+        if (self.__readRegister(REG_FREQ_ERROR_MSB) & B1000 ):# Sign bit is on
             freqError -= 524288 # B1000'0000'0000'0000'0000
 
         fXtal = 32E6 # FXOSC: crystal oscillator (XTAL) frequency (2.5. Chip Specification, p. 14)
@@ -260,41 +260,45 @@ class LoRa:
     #TODO: This should be changed to use bytearray with automatic size calculation
     #size_t return, buffer pointer and int size in
     def write(self, buffer):
-        pkt = bytearray(buffer, 'utf-8')
+        if type(buffer) is not bytes:
+            pkt = bytes(buffer, 'utf-8')
+        else:
+            pkt = buffer
         size = len(pkt)
-        currentLength = self.__readRegister(defs.REG_PAYLOAD_LENGTH) 
+        currentLength = self.__readRegister(REG_PAYLOAD_LENGTH) 
         # check size
-        if ((currentLength + size) > defs.MAX_PKT_LENGTH ):
-            size = defs.MAX_PKT_LENGTH - currentLength 
+        if ((currentLength + size) > MAX_PKT_LENGTH ):
+            size = MAX_PKT_LENGTH - currentLength 
         # write data
         for i in range(0,size):
-            self.__writeRegister(defs.REG_FIFO, pkt[i]) 
+            self.__writeRegister(REG_FIFO, pkt[i]) 
+            # print(f"Writing: {pkt[i]}")
         # update length
-        self.__writeRegister(defs.REG_PAYLOAD_LENGTH, currentLength + size) 
+        self.__writeRegister(REG_PAYLOAD_LENGTH, currentLength + size) 
 
         return size 
 
     #int 
     def available(self):
-        return (self.__readRegister(defs.REG_RX_NB_BYTES) -self._packetIndex) 
+        return (self.__readRegister(REG_RX_NB_BYTES) -self._packetIndex) 
 
     #int 
     def read(self):
         if (not self.available()):
             return -1 
         self._packetIndex = self._packetIndex + 1 
-        return self.__readRegister(defs.REG_FIFO) 
+        return self.__readRegister(REG_FIFO) 
 
     #int 
     def peek():
         if (not self.available()):
             return -1 
         # store current FIFO address
-        currentAddress = self.__readRegister(defs.REG_FIFO_ADDR_PTR) 
+        currentAddress = self.__readRegister(REG_FIFO_ADDR_PTR) 
         # read
-        b = self.__readRegister(defs.REG_FIFO) 
+        b = self.__readRegister(REG_FIFO) 
         # restore FIFO address
-        self.__writeRegister(defs.REG_FIFO_ADDR_PTR, currentAddress) 
+        self.__writeRegister(REG_FIFO_ADDR_PTR, currentAddress) 
         return b 
 
     #TODO: Figure out how to handle callbacks
@@ -306,7 +310,7 @@ class LoRa:
             return
 
         if callback:
-            self.__writeRegister(defs.REG_DIO_MAPPING_1, 0x00) # DIO0 => RXDONE
+            self.__writeRegister(REG_DIO_MAPPING_1, 0x00) # DIO0 => RXDONE
             GPIO.add_event_detect(self._dio0, GPIO.RISING, callback=self.handleDio0Rise, bouncetime=50)  
         else:
             GPIO.remove_event_detect(self._dio0)
@@ -326,11 +330,11 @@ class LoRa:
     def receive(self, size: int = 0):
         if (size > 0):
             self.implicitHeaderMode() 
-            self.__writeRegister(defs.REG_PAYLOAD_LENGTH, size & 0xff) 
+            self.__writeRegister(REG_PAYLOAD_LENGTH, size & 0xff) 
         else:
             self.explicitHeaderMode() 
 
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_RX_CONTINUOUS) 
+        self.__writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_CONTINUOUS) 
 
     # send a packet over the wire
     def transmit(self, packet):
@@ -342,22 +346,22 @@ class LoRa:
 
     # returns void 
     def idle(self):
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_STDBY) 
+        self.__writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_STDBY) 
 
     # returns void 
     def sleep(self):
-        self.__writeRegister(defs.REG_OP_MODE, defs.MODE_LONG_RANGE_MODE | defs.MODE_SLEEP) 
+        self.__writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_SLEEP) 
 
     # returns void, takes two ints
     def setTxPower(self, level, outputPin):
-        if (defs.PA_OUTPUT_RFO_PIN == outputPin):
+        if (PA_OUTPUT_RFO_PIN == outputPin):
         # RFO
             if (level < 0):
                 level = 0 
             elif (level > 14):
                 level = 14 
 
-            self.__writeRegister(defs.REG_PA_CONFIG, 0x70 | level) 
+            self.__writeRegister(REG_PA_CONFIG, 0x70 | level) 
         else:
         # PA BOOST
             if (level > 17):
@@ -368,16 +372,16 @@ class LoRa:
                 level -= 3 
 
                 # High Power +20 dBm Operation (Semtech SX1276/77/78/79 5.4.3.)
-                self.__writeRegister(defs.REG_PA_DAC, 0x87) 
+                self.__writeRegister(REG_PA_DAC, 0x87) 
                 self.setOCP(140) 
             else:
                 if (level < 2):
                     level = 2 
                 #$Default value PA_HF/LF or +17dBm
-                self.__writeRegister(defs.REG_PA_DAC, 0x84) 
+                self.__writeRegister(REG_PA_DAC, 0x84) 
                 self.setOCP(100) 
 
-            self.__writeRegister(defs.REG_PA_CONFIG, defs.PA_BOOST | (level - 2)) 
+            self.__writeRegister(REG_PA_CONFIG, PA_BOOST | (level - 2)) 
 
     # returns void, takes a long
     def setFrequency(self, frequency):
@@ -385,13 +389,13 @@ class LoRa:
         _frequency = frequency 
         frf = int((frequency << 19) / 32000000)
 
-        self.__writeRegister(defs.REG_FRF_MSB, (frf >> 16)) 
-        self.__writeRegister(defs.REG_FRF_MID, (frf >> 8)) 
-        self.__writeRegister(defs.REG_FRF_LSB, (frf >> 0)) 
+        self.__writeRegister(REG_FRF_MSB, (frf >> 16)) 
+        self.__writeRegister(REG_FRF_MID, (frf >> 8)) 
+        self.__writeRegister(REG_FRF_LSB, (frf >> 0)) 
 
     #int 
     def getSpreadingFactor(self):
-        return self.__readRegister(defs.REG_MODEM_CONFIG_2) >> 4 
+        return self.__readRegister(REG_MODEM_CONFIG_2) >> 4 
 
     # returns void, takes int 
     def setSpreadingFactor(self, sf):
@@ -401,18 +405,18 @@ class LoRa:
             sf = 12 
 
         if (sf == 6):
-            self.__writeRegister(defs.REG_DETECTION_OPTIMIZE, 0xc5) 
-            self.__writeRegister(defs.REG_DETECTION_THRESHOLD, 0x0c) 
+            self.__writeRegister(REG_DETECTION_OPTIMIZE, 0xc5) 
+            self.__writeRegister(REG_DETECTION_THRESHOLD, 0x0c) 
         else:
-            self.__writeRegister(defs.REG_DETECTION_OPTIMIZE, 0xc3) 
-            self.__writeRegister(defs.REG_DETECTION_THRESHOLD, 0x0a) 
+            self.__writeRegister(REG_DETECTION_OPTIMIZE, 0xc3) 
+            self.__writeRegister(REG_DETECTION_THRESHOLD, 0x0a) 
 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_2, (self.__readRegister(defs.REG_MODEM_CONFIG_2) & 0x0f) | ((sf << 4) & 0xf0)) 
+        self.__writeRegister(REG_MODEM_CONFIG_2, (self.__readRegister(REG_MODEM_CONFIG_2) & 0x0f) | ((sf << 4) & 0xf0)) 
         self.setLdoFlag() 
 
     #long 
     def getSignalBandwidth(self):
-        bw = (self.__readRegister(defs.REG_MODEM_CONFIG_1) >> 4) 
+        bw = (self.__readRegister(REG_MODEM_CONFIG_1) >> 4) 
         lut = [ 7.8E3 , 10.4E3 , 15.6E3 , 20.8E3 , 31.25E3 , 41.7E3 , 62.5E3 , 125E3 , 250E3 , 500E3]
         return lut[bw]
 
@@ -441,7 +445,7 @@ class LoRa:
         else:
             bw = 9 
 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_1, (self.__readRegister(defs.REG_MODEM_CONFIG_1) & 0x0f) | (bw << 4)) 
+        self.__writeRegister(REG_MODEM_CONFIG_1, (self.__readRegister(REG_MODEM_CONFIG_1) & 0x0f) | (bw << 4)) 
         self.setLdoFlag() 
 
     # returns void 
@@ -461,9 +465,9 @@ class LoRa:
         # Section 4.1.1.6
         ldoOn = symbolDuration > 16 
 
-        config3 = self.__readRegister(defs.REG_MODEM_CONFIG_3) 
+        config3 = self.__readRegister(REG_MODEM_CONFIG_3) 
         self.bitWrite(config3, 3, ldoOn) 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_3, config3) 
+        self.__writeRegister(REG_MODEM_CONFIG_3, config3) 
 
     # returns void, takes int
     def setCodingRate4(self, denominator):
@@ -474,34 +478,34 @@ class LoRa:
 
         cr = denominator - 4 
 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_1, (self.__readRegister(defs.REG_MODEM_CONFIG_1) & 0xf1) | (cr << 1)) 
+        self.__writeRegister(REG_MODEM_CONFIG_1, (self.__readRegister(REG_MODEM_CONFIG_1) & 0xf1) | (cr << 1)) 
 
     # returns void, takes long
     def setPreambleLength(self, length):
-        self.__writeRegister(defs.REG_PREAMBLE_MSB, (length >> 8)) 
-        self.__writeRegister(defs.REG_PREAMBLE_LSB, (length >> 0)) 
+        self.__writeRegister(REG_PREAMBLE_MSB, (length >> 8)) 
+        self.__writeRegister(REG_PREAMBLE_LSB, (length >> 0)) 
 
     # returns void, takes int 
     def setSyncWord(self, sw):
-        self.__writeRegister(defs.REG_SYNC_WORD, sw) 
+        self.__writeRegister(REG_SYNC_WORD, sw) 
 
     # returns void 
     def enableCrc(self):
-        self.__writeRegister(defs.REG_MODEM_CONFIG_2, self.__readRegister(defs.REG_MODEM_CONFIG_2) | 0x04) 
+        self.__writeRegister(REG_MODEM_CONFIG_2, self.__readRegister(REG_MODEM_CONFIG_2) | 0x04) 
 
     # returns void 
     def disableCrc(self):
-        self.__writeRegister(defs.REG_MODEM_CONFIG_2, self.__readRegister(defs.REG_MODEM_CONFIG_2) & 0xfb) 
+        self.__writeRegister(REG_MODEM_CONFIG_2, self.__readRegister(REG_MODEM_CONFIG_2) & 0xfb) 
 
     # returns void 
     def enableInvertIQ(self):
-        self.__writeRegister(defs.REG_INVERTIQ,  0x66) 
-        self.__writeRegister(defs.REG_INVERTIQ2, 0x19) 
+        self.__writeRegister(REG_INVERTIQ,  0x66) 
+        self.__writeRegister(REG_INVERTIQ2, 0x19) 
 
     # returns void 
     def disableInvertIQ(self):
-        self.__writeRegister(defs.REG_INVERTIQ,  0x27) 
-        self.__writeRegister(defs.REG_INVERTIQ2, 0x1d) 
+        self.__writeRegister(REG_INVERTIQ,  0x27) 
+        self.__writeRegister(REG_INVERTIQ2, 0x1d) 
 
     # returns void, takes uint8 
     def setOCP(self, mA:int):
@@ -512,10 +516,10 @@ class LoRa:
         elif (mA <=240):
             ocpTrim = int((mA + 30) / 10) 
 
-        self.__writeRegister(defs.REG_OCP, 0x20 | (0x1F & ocpTrim)) 
+        self.__writeRegister(REG_OCP, 0x20 | (0x1F & ocpTrim)) 
 
     def random(self):
-        return self.__readRegister(defs.REG_RSSI_WIDEBAND) 
+        return self.__readRegister(REG_RSSI_WIDEBAND) 
 
     # returns void 
     def setSPIFrequency(self, frequency):
@@ -529,36 +533,36 @@ class LoRa:
     # returns void 
     def explicitHeaderMode(self):
         _implicitHeaderMode = 0 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_1, self.__readRegister(defs.REG_MODEM_CONFIG_1) & 0xfe) 
+        self.__writeRegister(REG_MODEM_CONFIG_1, self.__readRegister(REG_MODEM_CONFIG_1) & 0xfe) 
 
     # returns void 
     def implicitHeaderMode(self):
         _implicitHeaderMode = 1 
-        self.__writeRegister(defs.REG_MODEM_CONFIG_1, self.__readRegister(defs.REG_MODEM_CONFIG_1) | 0x01) 
+        self.__writeRegister(REG_MODEM_CONFIG_1, self.__readRegister(REG_MODEM_CONFIG_1) | 0x01) 
 
     # returns void 
     def handleDio0Rise(self, channel):
-        irqFlags = self.__readRegister(defs.REG_IRQ_FLAGS) 
+        irqFlags = self.__readRegister(REG_IRQ_FLAGS) 
 
         # clear IRQ's
-        self.__writeRegister(defs.REG_IRQ_FLAGS, irqFlags) 
+        self.__writeRegister(REG_IRQ_FLAGS, irqFlags) 
 
-        if ((irqFlags & defs.IRQ_PAYLOAD_CRC_ERROR_MASK) == 0):
+        if ((irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) == 0):
 
-            if ((irqFlags & defs.IRQ_RX_DONE_MASK) != 0):
+            if ((irqFlags & IRQ_RX_DONE_MASK) != 0):
                 # received a packet
                 self._packetIndex = 0 
 
                 # read packet length
-                packetLength = self.__readRegister(defs.REG_PAYLOAD_LENGTH) if self._implicitHeaderMode else self.__readRegister(defs.REG_RX_NB_BYTES) 
+                packetLength = self.__readRegister(REG_PAYLOAD_LENGTH) if self._implicitHeaderMode else self.__readRegister(REG_RX_NB_BYTES) 
 
                 # set FIFO address to current RX address
-                self.__writeRegister(defs.REG_FIFO_ADDR_PTR, self.__readRegister(defs.REG_FIFO_RX_CURRENT_ADDR)) 
+                self.__writeRegister(REG_FIFO_ADDR_PTR, self.__readRegister(REG_FIFO_RX_CURRENT_ADDR)) 
 
                 if (self._onReceive):
                     self._onReceive(packetLength) 
 
-            elif ((irqFlags & defs.IRQ_TX_DONE_MASK) != 0):
+            elif ((irqFlags & IRQ_TX_DONE_MASK) != 0):
                 if (self._onTxDone):
                    self._onTxDone() 
 
